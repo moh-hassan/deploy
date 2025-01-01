@@ -1,0 +1,83 @@
+# Define the build version
+version: 1.1.0-dev-{build}
+
+image: Visual Studio 2022
+
+
+init:
+  # - ps: iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+
+  - ps: |
+      git config --global core.autocrlf input
+      Write-Host "APPVEYOR_BUILD_VERSION='$env:APPVEYOR_BUILD_VERSION'" -ForegroundColor Yellow      
+      $env:SIGNPATH_SIGNING_POLICY_SLUG = 'test-signing'
+      $env:APPVEY_VERSION = $env:APPVEY_BUILD_VERSION
+
+      if ($env:APPVEYOR_REPO_TAG -eq "true") {
+        $env:SIGNPATH_SIGNING_POLICY_SLUG = 'release-signing'
+        $ver = $env:APPVEYOR_REPO_TAG_NAME
+        if($ver.StartsWith("v") -eq $true) { 
+          $ver = $ver.Substring(1) 
+          $env:APPVEY_VERSION = $ver
+        }
+        try
+        {         
+          Update-AppveyorBuild -Version $ver 
+          Write-Host "Update-AppveyorBuild Success to change version to TAG: '$env:APPVEYOR_REPO_TAG_NAME'"   -ForegroundColor Green          
+        }
+        catch
+        {
+          Write-Host "Update-AppveyorBuild Fail to change version to TAG: '$env:APPVEYOR_REPO_TAG_NAME'"   -ForegroundColor Red
+          Write-Host "Exception Error: $PSItem.Exception.Message" -ForegroundColor Red
+        }
+      }
+  - ps: |
+      Write-Host "APPVEYOR_BUILD_VERSION='$env:APPVEYOR_BUILD_VERSION'" -ForegroundColor Yellow
+      Write-Host "APPVEYOR_REPO_TAG_NAME= '$env:APPVEYOR_REPO_TAG_NAME'" -ForegroundColor Yellow      
+
+  
+  
+#install:
+#  - ps: Install-Module -Name SignPath
+#  - cmd: choco install gh
+  
+#test: off
+
+build_script: 
+  - ps: .\build.ps1
+
+test: off
+
+artifacts:
+  - path: '**/*.nupkg'
+    name: nupkg
+    
+deploy:
+# myget
+  -  provider: NuGet
+     server: https://www.myget.org/F/appvey/api/v2/package
+     api_key: $(MYGET_KEY)
+     on:
+       branch: main
+
+  # GitHub
+  - provider: GitHub
+    auth_token: $(GH_TOKEN)
+    artifact: nupkg
+    prerelease: true
+    on:
+      branch: main
+      appveyor_repo_tag: true
+
+
+
+  # Nuget
+  - provider: NuGet
+    api_key: $(NUGET_KEY)
+    on:   
+      branch: main                # release from master branch only
+      APPVEYOR_REPO_TAG: true       # deploy on tag push only
+
+# on_finish:
+#   - ps: $blockRdp = $true; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))
+ 
